@@ -1,0 +1,11 @@
+.github\workflows
+documentation
+manifests
+node_modules
+dist
+/.github/*
+/manifests/*
+/documentation/*
+/node_modules/*
+/dist/*
+
