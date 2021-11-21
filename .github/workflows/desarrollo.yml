@@ -1,0 +1,123 @@
+name: Desarrollo
+on:
+  push:
+    branches:  [ desarrollo ]
+  workflow_dispatch:
+  
+jobs:
+  build:
+    name: Build
+    runs-on: self-hosted
+    
+    steps:  
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - uses: cschleiden/replace-tokens@v1
+      with:
+        tokenPrefix: '#{'
+        tokenSuffix: '}#'
+        files: '["**/*.yml"]'   
+      env:
+       MYSQLHOST_DEV: ${{secrets.MYSQLHOST_DEV}}
+       MYSQLUSER_DEV: ${{secrets.MYSQLUSER_DEV}}
+       MYSQLPASS_DEV: ${{secrets.MYSQLPASS_DEV}}
+       MYSQLDB_DEV: ${{secrets.MYSQLDB_DEV}}
+       SMTP_HOST: ${{secrets.SMTP_HOST}}
+       SMTP_PORT: ${{secrets.SMTP_PORT}}
+       SMTP_USER: ${{secrets.SMTP_USER}}
+       SMTP_PASS: ${{secrets.SMTP_PASS}}
+       SMTP_SECURE: ${{secrets.SMTP_SECURE}}
+       HOST_DEV: ${{secrets.HOST_DEV}}
+       APIAUTO_DEV: ${{secrets.APIAUTO_DEV}}
+       APISOT_DEV: ${{secrets.APISOT_DEV}}
+       SECRETKEYCAPTCHA: ${{secrets.SECRETKEYCAPTCHA}}
+       AWS_ACCESS_KEY_ID_S3_DEV: ${{secrets.AWS_ACCESS_KEY_ID_S3_DEV}}
+       AWS_SECRET_ACCESS_KEY_S3_DEV: ${{secrets.AWS_SECRET_ACCESS_KEY_S3_DEV}}
+       AWS_REGION_S3_DEV: ${{secrets.AWS_REGION_S3_DEV}}
+       AWS_REGION_S3: ${{secrets.AWS_REGION_S3}}
+       AWS_BUCKET_NAME_S3_DEV: ${{secrets.AWS_BUCKET_NAME_S3_DEV}}
+       SMTP_JORDAN_HOST: ${{secrets.SMTP_JORDAN_HOST}}
+       SMTP_JORDAN_PORT: ${{secrets.SMTP_JORDAN_PORT}}
+       AWS_ACCESS_KEY_ID_PUBLICATION: ${{secrets.AWS_ACCESS_KEY_ID_PUBLICATION}}
+       AWS_SECRET_ACCESS_KEY_PUBLICATION: ${{secrets.AWS_SECRET_ACCESS_KEY_PUBLICATION}}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ secrets.REGISTRY_DEV }}
+        ECR_REPOSITORY: ${{ secrets.REPO_DEV }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  
+  deploy:
+    name: Deploy
+    runs-on: self-hosted
+    needs: build
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+      
+    - name: Find and Replace
+      uses: jacobtomlinson/gha-find-replace@v2
+      with:
+        find: "ENV_DOCKER_IMAGE"
+        replace: "${{ secrets.REGISTRY_DEV }}/${{ secrets.REPO_DEV }}:${{ github.sha }}"
+        include: "manifests/**"
+        regex: false
+      
+
+    - uses: cschleiden/replace-tokens@v1
+      with:
+        tokenPrefix: '#{'
+        tokenSuffix: '}#'
+        files: '["**/*.yml"]'   
+      env:
+       MYSQLHOST_DEV: ${{secrets.MYSQLHOST_DEV}}
+       MYSQLUSER_DEV: ${{secrets.MYSQLUSER_DEV}}
+       MYSQLPASS_DEV: ${{secrets.MYSQLPASS_DEV}}
+       MYSQLDB_DEV: ${{secrets.MYSQLDB_DEV}}
+       SMTP_HOST: ${{secrets.SMTP_HOST}}
+       SMTP_PORT: ${{secrets.SMTP_PORT}}
+       SMTP_USER: ${{secrets.SMTP_USER}}
+       SMTP_PASS: ${{secrets.SMTP_PASS}}
+       SMTP_SECURE: ${{secrets.SMTP_SECURE}}
+       HOST_DEV: ${{secrets.HOST_DEV}}
+       APIAUTO_DEV: ${{secrets.APIAUTO_DEV}}
+       APISOT_DEV: ${{secrets.APISOT_DEV}}
+       SECRETKEYCAPTCHA: ${{secrets.SECRETKEYCAPTCHA}}
+       AWS_ACCESS_KEY_ID_S3_DEV: ${{secrets.AWS_ACCESS_KEY_ID_S3_DEV}}
+       AWS_SECRET_ACCESS_KEY_S3_DEV: ${{secrets.AWS_SECRET_ACCESS_KEY_S3_DEV}}
+       AWS_REGION_S3_DEV: ${{secrets.AWS_REGION_S3_DEV}}
+       AWS_REGION_S3: ${{secrets.AWS_REGION_S3}}
+       AWS_BUCKET_NAME_S3_DEV: ${{secrets.AWS_BUCKET_NAME_S3_DEV}}
+       SMTP_JORDAN_HOST: ${{secrets.SMTP_JORDAN_HOST}}
+       SMTP_JORDAN_PORT: ${{secrets.SMTP_JORDAN_PORT}}
+       AWS_ACCESS_KEY_ID_PUBLICATION: ${{secrets.AWS_ACCESS_KEY_ID_PUBLICATION}}
+       AWS_SECRET_ACCESS_KEY_PUBLICATION: ${{secrets.AWS_SECRET_ACCESS_KEY_PUBLICATION}}
+
+    - name: Kubernetes Deployment
+      env:
+         namespace: auth-desarrollo
+         deployment: auth360-dev
+         service: auth360-dev
+      run: |
+        cd manifests
+        aws eks --region us-east-1 update-kubeconfig --name eks-dev-jordan
+        kubectl config set-context --current --namespace=$namespace
+        kubectl apply -f deployment.yml
+        kubectl apply -f service.yml
+        kubectl rollout restart deploy $deployment -n $namespace
+        kubectl get all -n $namespace

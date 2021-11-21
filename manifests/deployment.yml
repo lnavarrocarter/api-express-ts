@@ -1,0 +1,90 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ENV_NAME
+  namespace: ENV_NAMESPACE
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ENV_NAME
+  template:
+    metadata:
+      labels:
+        app: ENV_NAME
+    spec:
+      volumes:
+        - name: persistent-storage
+          persistentVolumeClaim:
+            claimName: efs-auth-claim
+      containers:
+      - name: app
+        image: ENV_DOCKER_IMAGE
+        imagePullPolicy: IfNotPresent    
+        securityContext:
+#         runAsUser: 2000
+          allowPrivilegeEscalation: false        
+        volumeMounts:
+          - name: persistent-storage
+            mountPath: /data
+        ports:
+          - containerPort: 3200
+        lifecycle:
+          preStop:
+            exec:
+              command: ["sleep", "15"]
+        readinessProbe:
+          tcpSocket:
+            port: 3200
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 3200
+          initialDelaySeconds: 15
+          periodSeconds: 20
+        env:
+            - name : MYSQLHOST
+              value: '#{MYSQLHOST_DEV}#'
+            - name : MYSQLUSER
+              value: '#{MYSQLUSER_DEV}#'
+            - name : MYSQLPASS
+              value: '#{MYSQLPASS_DEV}#'
+            - name : MYSQLDB
+              value: '#{MYSQLDB_DEV}#'
+            - name : SMTP_HOST
+              value: '#{SMTP_HOST}#'
+            - name : SMTP_PORT
+              value: '#{SMTP_PORT}#'
+            - name : SMTP_USER
+              value: '#{SMTP_USER}#'
+            - name : SMTP_PASS
+              value: '#{SMTP_PASS}#'
+            - name : SMTP_SECURE
+              value: '#{SMTP_SECURE}#'
+            - name:  HOST
+              value: '#{HOST_DEV}#'
+            - name:  APIAUTO
+              value: '#{APIAUTO_DEV}#'
+            - name:  APISOT
+              value: '#{APISOT_DEV}#'
+            - name: SECRETKEYCAPTCHA
+              value: '#{SECRETKEYCAPTCHA}#'
+            - name: AWS_ACCESS_KEY_ID_S3
+              value: '#{AWS_ACCESS_KEY_ID_S3_DEV}#'
+            - name: AWS_SECRET_ACCESS_KEY_S3
+              value: '#{AWS_SECRET_ACCESS_KEY_S3_DEV}#'
+            - name: AWS_REGION_S3
+              value: '#{AWS_REGION_S3_DEV}#'
+            - name: AWS_BUCKET_NAME_S3
+              value: '#{AWS_BUCKET_NAME_S3_DEV}#'
+            - name: SMTP_JORDAN_HOST
+              value: '#{SMTP_JORDAN_HOST}#'
+            - name: SMTP_JORDAN_PORT
+              value: '#{SMTP_JORDAN_PORT}#'
+            - name: API_EVENT_ITD_DEV
+              value: '#{API_EVENT_ITD_DEV}#'
+            - name: AWS_ACCESS_KEY_ID_PUBLICATION
+              value: '#{AWS_ACCESS_KEY_ID_PUBLICATION}#'
+            - name: AWS_SECRET_ACCESS_KEY_PUBLICATION
+              value: '#{AWS_SECRET_ACCESS_KEY_PUBLICATION}#'

@@ -1,0 +1,97 @@
+name: Produccion
+on:
+  workflow_dispatch:
+  
+jobs:
+  build:
+    name: Build
+    runs-on: self-hosted
+    
+    steps:  
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - uses: cschleiden/replace-tokens@v1
+      with:
+        tokenPrefix: '#{'
+        tokenSuffix: '}#'
+        files: '["**/*.yml"]'   
+      env:
+       HOST: ${{secrets.HOST}}
+
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v1
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+
+    - name: Login to Amazon ECR
+      id: login-ecr
+      uses: aws-actions/amazon-ecr-login@v1
+      
+    - name: Build, tag, and push image to Amazon ECR
+      env:
+        ECR_REGISTRY: ${{ secrets.REGISTRY_PRD }}
+        ECR_REPOSITORY: ${{ secrets.REPO_PRD }}
+        IMAGE_TAG: ${{ github.sha }}
+      run: |
+        docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+        docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG  
+  deploy:
+    name: Deploy
+    runs-on: self-hosted
+    needs: build
+    
+    steps:
+    - name: Check out code
+      uses: actions/checkout@v2
+
+    - name: Find and Replace [ENV_DOCKER_IMAGE]
+      uses: jacobtomlinson/gha-find-replace@v2
+      with:
+        find: "ENV_DOCKER_IMAGE"
+        replace: "${{ secrets.REGISTRY_PROD }}/${{ secrets.REPO_PROD }}:${{ github.sha }}"
+        include: "manifests/**"
+        regex: false
+    
+    - name: Find and Replace [ENV_NAME]
+      uses: jacobtomlinson/gha-find-replace@v2
+      with:
+        find: "ENV_NAME"
+        replace: "api-v1"
+        include: "manifests/**"
+        regex: false
+
+    - name: Find and Replace [ENV_NAMESPACE]
+      uses: jacobtomlinson/gha-find-replace@v2
+      with:
+        find: "ENV_NAMESPACE"
+        replace: "backend-space"
+        include: "manifests/**"
+        regex: false
+
+    - name: Replace Enviroments Deployment
+      uses: cschleiden/replace-tokens@v1
+      with:
+        tokenPrefix: '#{'
+        tokenSuffix: '}#'
+        files: '["**/*.yml"]'   
+      env:
+       HOST: ${{secrets.HOST}}
+
+
+    - name: Kubernetes Deployment
+      env:
+         namespace: backend-space
+         deployment: api-v1
+         service: api-v1
+      run: |
+        cd manifests
+        aws eks --region us-east-1 update-kubeconfig --name EKS-JRDN-PRD
+        kubectl config set-context --current --namespace=$namespace
+        kubectl apply -f deployment.yml
+        kubectl apply -f service.yml
+        kubectl apply -f ingress.yml
+        kubectl rollout restart deploy $deployment -n $namespace
+        kubectl get all -n $namespace
